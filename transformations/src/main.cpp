@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
 #include <png++/png.hpp>
 
 #include "logging.hpp"
@@ -21,10 +22,10 @@ int main(int argc, char *argv[]) {
   int rc = 0;
 
   float vertices[] = {
-    0.5f, 0.5f, 0.0f,
-    0.5f, -0.5f, 0.0f,
-    -0.5f, -0.5f, 0.0f,
-    -0.5f, 0.5f, 0.0f,
+    0.5f, 0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f, // pos, color, tex coords
+    0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
+    -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f,   0.0f, 0.0f,
+    -0.5f, 0.5f, 0.0f,  1.0f, 1.0f, 0.0f,   0.0f, 1.0f,
   };
 
   unsigned int indices[] = {
@@ -41,43 +42,7 @@ int main(int argc, char *argv[]) {
 
   GLProgram shaderProgram{"src/vertex_shader.glsl", "src/fragment_shader.glsl"};
  
-  //{
-  //  png::image<png::rgb_pixel> image{"magnemite.png"};
-  //  uint32_t imageRows = image.get_height();
-  //  uint32_t imageCols = image.get_width();
-  //  uint32_t imageSize = imageRows * imageCols;
-  //  std::unique_ptr<unsigned char[]> rawImage{new unsigned char[imageSize*3]};
-  //  for (uint32_t row = 0; row < imageRows; row++) {
-  //    png::image<png::rgb_pixel>::row_access data = image.get_row(0);
-  //    for (size_t i = 0; i < data.size(); i++) {
-  //      png::rgb_pixel pix = data.at(i);
-  //      rawImage[3*i+0] = pix.red;
-  //      rawImage[3*i+1] = pix.green;
-  //      rawImage[3*i+2] = pix.blue;
-  //    }
-  //  }
-
-  //  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, imageCols, imageRows, 0, GL_RGB,
-  //               GL_UNSIGNED_BYTE, rawImage.get());
-  //  glGenerateMipmap(GL_TEXTURE_2D);
-
-
-  //  unsigned int texture;
-  //  glGenTextures(1, &texture);
-  //  glBindTexture(GL_TEXTURE_2D, texture);
-
-  //  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // s = x = col
-  //  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); // t = y = row
-  //  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  //  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-
-
-  //} // make sure the decoded image is freed
   
-
-
-
 
 
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -130,14 +95,72 @@ int main(int argc, char *argv[]) {
 
 
   // Configure the vertex attributes
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), (void*)0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8*sizeof(float), (void*)(0));
   glEnableVertexAttribArray(0);
+
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8*sizeof(float), (void*)(3*sizeof(float)));
+  glEnableVertexAttribArray(1);
+
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8*sizeof(float), (void*)(6*sizeof(float)));
+  glEnableVertexAttribArray(2);
+
+  unsigned int texture;
+  {
+    png::image<png::rgba_pixel> image{"magnemite.png"};
+    uint32_t height = image.get_height();
+    uint32_t width = image.get_width();
+    uint32_t imageSize = width * height;
+    std::unique_ptr<unsigned char[]> rawImage{
+      new unsigned char[imageSize*sizeof(png::rgba_pixel)]};
+    Logger::debug("Got %lux%lu image\n", width, height);
+    for (uint32_t row = 0; row < height; row++) {
+      png::image<png::rgba_pixel>::row_access rowData = image[height-row-1];
+      for (size_t i = 0; i < width; i++) {
+        png::rgba_pixel pix = rowData[i];
+
+        size_t rowOffs = row*sizeof(png::rgba_pixel)*width;
+        rawImage[rowOffs+4*i+0] = pix.red;
+        rawImage[rowOffs+4*i+1] = pix.green;
+        rawImage[rowOffs+4*i+2] = pix.blue;
+        rawImage[rowOffs+4*i+3] = pix.alpha;
+      }
+    }
+
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, rawImage.get());
+    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imageCols, imageRows, 0, GL_RGBA,
+    //             GL_UNSIGNED_BYTE, rawImage.get());
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // s = x = col
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); // t = y = row
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+
+
+  } // make sure the decoded image is freed
+  
+
+
+
+
+  shaderProgram.use();
+  glUniform1i(glGetUniformLocation(shaderProgram.getID(), "ourTexture"), 0);
+
 
   // Clear VAO binding -- have to restore later to use it again
   glBindVertexArray(0);
 
   while (!glfwWindowShouldClose(window)) {
     glClear(GL_COLOR_BUFFER_BIT);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
 
     shaderProgram.use();
     glBindVertexArray(vao);
@@ -152,7 +175,7 @@ int main(int argc, char *argv[]) {
 
 cleanup:
   glfwTerminate();
-done:
+//done:
   return rc;
 }
 
