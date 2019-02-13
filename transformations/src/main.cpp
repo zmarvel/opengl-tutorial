@@ -33,6 +33,11 @@ int main(int argc, char *argv[]) {
     1, 2, 3,
   };
 
+  // Declare variables here, not because I like it, but because GCC issues an
+  // error when gotos cross declarations---and I want to use gotos. <3
+  unsigned int vao, vbo, ebo;
+  unsigned int texture;
+
   Logger::setLogLevel(LogLevel::DEBUG);
 
   if (!glfwInit()) {
@@ -82,7 +87,6 @@ int main(int argc, char *argv[]) {
 
   // Configure vertex array object
   // Allocate and copy vertex data to GPU
-  unsigned int vao, vbo, ebo;
   glGenVertexArrays(1, &vao);
   glGenBuffers(1, &vbo);
   glGenBuffers(1, &ebo);
@@ -95,16 +99,18 @@ int main(int argc, char *argv[]) {
 
 
   // Configure the vertex attributes
+  // Vertices
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8*sizeof(float), (void*)(0));
   glEnableVertexAttribArray(0);
 
+  // Colors
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8*sizeof(float), (void*)(3*sizeof(float)));
   glEnableVertexAttribArray(1);
 
+  // Texture coordinates
   glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8*sizeof(float), (void*)(6*sizeof(float)));
   glEnableVertexAttribArray(2);
 
-  unsigned int texture;
   {
     png::image<png::rgba_pixel> image{"magnemite.png"};
     uint32_t height = image.get_height();
@@ -114,6 +120,7 @@ int main(int argc, char *argv[]) {
       new unsigned char[imageSize*sizeof(png::rgba_pixel)]};
     Logger::debug("Got %lux%lu image\n", width, height);
     for (uint32_t row = 0; row < height; row++) {
+      // Read rows in reverse or the image will be displayed upside-down
       png::image<png::rgba_pixel>::row_access rowData = image[height-row-1];
       for (size_t i = 0; i < width; i++) {
         png::rgba_pixel pix = rowData[i];
@@ -132,26 +139,29 @@ int main(int argc, char *argv[]) {
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
                  GL_UNSIGNED_BYTE, rawImage.get());
-    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imageCols, imageRows, 0, GL_RGBA,
-    //             GL_UNSIGNED_BYTE, rawImage.get());
     glGenerateMipmap(GL_TEXTURE_2D);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // s = x = col
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); // t = y = row
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-
-
   } // make sure the decoded image is freed
-  
-
-
-
 
   shaderProgram.use();
-  glUniform1i(glGetUniformLocation(shaderProgram.getID(), "ourTexture"), 0);
 
+  // Let's transform and scale the image now
+  {
+    glm::mat4 transf = glm::mat4(1.0f);
+    //transf = glm::rotate(transf, glm::pi<float>()/4, glm::vec3(0.0f, 0.0f, 1.0f));
+    transf = glm::rotate(transf, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    transf = glm::scale(transf, glm::vec3(0.5, 0.5, 0.5));
+
+    unsigned int transformLoc = glGetUniformLocation(shaderProgram.getID(),
+                                                     "transform");
+    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transf));
+  }
+
+  glUniform1i(glGetUniformLocation(shaderProgram.getID(), "ourTexture"), 0);
 
   // Clear VAO binding -- have to restore later to use it again
   glBindVertexArray(0);
@@ -165,7 +175,6 @@ int main(int argc, char *argv[]) {
     shaderProgram.use();
     glBindVertexArray(vao);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    //glDrawArrays(GL_TRIANGLES, 0, 3);
 
     glfwSwapBuffers(window);
     glfwPollEvents();
