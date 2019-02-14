@@ -5,6 +5,7 @@ opengl_base_SOURCES = \
 	src/main.cpp \
 	src/logging.cpp \
 	src/gl_program.cpp \
+	src/png_image.cpp \
 	src/glad.c
 
 AM_CPPFLAGS = -Iinclude
