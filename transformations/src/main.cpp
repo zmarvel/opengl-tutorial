@@ -11,6 +11,7 @@
 
 #include "logging.hpp"
 #include "gl_program.hpp"
+#include "png_image.hpp"
 
 
 void framebuffer_size_cb(GLFWwindow *window, int w, int h);
@@ -36,7 +37,8 @@ int main(int argc, char *argv[]) {
   // Declare variables here, not because I like it, but because GCC issues an
   // error when gotos cross declarations---and I want to use gotos. <3
   unsigned int vao, vbo, ebo;
-  unsigned int texture;
+  unsigned int magnemite, clefairy;
+  unsigned int transformLoc;
 
   Logger::setLogLevel(LogLevel::DEBUG);
 
@@ -112,30 +114,12 @@ int main(int argc, char *argv[]) {
   glEnableVertexAttribArray(2);
 
   {
-    png::image<png::rgba_pixel> image{"magnemite.png"};
-    uint32_t height = image.get_height();
-    uint32_t width = image.get_width();
-    uint32_t imageSize = width * height;
-    std::unique_ptr<unsigned char[]> rawImage{
-      new unsigned char[imageSize*sizeof(png::rgba_pixel)]};
-    Logger::debug("Got %lux%lu image\n", width, height);
-    for (uint32_t row = 0; row < height; row++) {
-      // Read rows in reverse or the image will be displayed upside-down
-      png::image<png::rgba_pixel>::row_access rowData = image[height-row-1];
-      for (size_t i = 0; i < width; i++) {
-        png::rgba_pixel pix = rowData[i];
+    PngImage image{"magnemite.png"};
+    std::unique_ptr<unsigned char[]> rawImage = image.readRaw();
+    uint32_t width = image.getWidth(), height = image.getHeight();
 
-        size_t rowOffs = row*sizeof(png::rgba_pixel)*width;
-        rawImage[rowOffs+4*i+0] = pix.red;
-        rawImage[rowOffs+4*i+1] = pix.green;
-        rawImage[rowOffs+4*i+2] = pix.blue;
-        rawImage[rowOffs+4*i+3] = pix.alpha;
-      }
-    }
-
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
+    glGenTextures(1, &magnemite);
+    glBindTexture(GL_TEXTURE_2D, magnemite);
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
                  GL_UNSIGNED_BYTE, rawImage.get());
@@ -146,20 +130,27 @@ int main(int argc, char *argv[]) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   } // make sure the decoded image is freed
+  {
+    PngImage image{"clefairy.png"};
+    std::unique_ptr<unsigned char[]> rawImage = image.readRaw();
+    uint32_t width = image.getWidth(), height = image.getHeight();
+
+    glGenTextures(1, &clefairy);
+    glBindTexture(GL_TEXTURE_2D, clefairy);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, rawImage.get());
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // s = x = col
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); // t = y = row
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  }
 
   shaderProgram.use();
 
-  // Let's transform and scale the image now
-  {
-    glm::mat4 transf = glm::mat4(1.0f);
-    //transf = glm::rotate(transf, glm::pi<float>()/4, glm::vec3(0.0f, 0.0f, 1.0f));
-    transf = glm::rotate(transf, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    transf = glm::scale(transf, glm::vec3(0.5, 0.5, 0.5));
-
-    unsigned int transformLoc = glGetUniformLocation(shaderProgram.getID(),
-                                                     "transform");
-    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transf));
-  }
+  transformLoc = glGetUniformLocation(shaderProgram.getID(), "transform");
 
   glUniform1i(glGetUniformLocation(shaderProgram.getID(), "ourTexture"), 0);
 
@@ -169,11 +160,33 @@ int main(int argc, char *argv[]) {
   while (!glfwWindowShouldClose(window)) {
     glClear(GL_COLOR_BUFFER_BIT);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
     shaderProgram.use();
+
+    glActiveTexture(GL_TEXTURE0);
+    //glBindTexture(GL_TEXTURE_2D, magnemite);
+    glActiveTexture(GL_TEXTURE1);
+
+    {
+      glm::mat4 transf = glm::mat4(1.0f);
+      transf = glm::translate(transf, glm::vec3(0.5f, -0.5f, 0.0f));
+      transf = glm::rotate(transf, (float)glfwGetTime(),
+                           glm::vec3(0.0, 0.0, 1.0));
+
+      glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transf));
+    }
+
     glBindVertexArray(vao);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    {
+      glm::mat4 transf = glm::mat4(1.0f);
+      transf = glm::translate(transf, glm::vec3(-0.5f, 0.5f, 0.0f));
+      float scale = sin(glfwGetTime()) + 1.0f;
+      transf = glm::scale(transf, glm::vec3(scale));
+
+      glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transf));
+    }
+
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
     glfwSwapBuffers(window);
